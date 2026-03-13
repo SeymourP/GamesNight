@@ -1,15 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Device } from 'react-native-ble-plx';
+import { Peripheral } from 'react-native-ble-manager';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { initBLE } from '../src/bluetooth/BLEManager';
 import {
   joinRoom,
   sendToHost,
@@ -33,10 +34,14 @@ export default function Index() {
   const [mode, setMode] = useState<Mode>('idle');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [nearbyRooms, setNearbyRooms] = useState<Device[]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
+  const [nearbyRooms, setNearbyRooms] = useState<Peripheral[]>([]);
+  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
   const [connectedGuests, setConnectedGuests] = useState<string[]>([]);
   const [status, setStatus] = useState('Choose a role');
+
+  useEffect(() => {
+    initBLE();
+  }, []);
 
   const addMessage = (from: string, text: string) => {
     setMessages(prev => [
@@ -49,6 +54,7 @@ export default function Index() {
 
   const handleHost = async () => {
     const granted = await requestBluetoothPermissions();
+    console.log('Permissions granted:', granted);
     if (!granted) {
       showPermissionDeniedAlert();
       return;
@@ -64,7 +70,7 @@ export default function Index() {
       },
       (deviceId) => {
         setConnectedGuests(prev => [...prev, deviceId]);
-        setStatus(`Guest connected!`);
+        setStatus('Guest connected!');
         addMessage('System', `Guest ${deviceId.slice(0, 6)} joined ✓`);
       },
       (deviceId) => {
@@ -104,10 +110,10 @@ export default function Index() {
     });
   };
 
-  const handleJoin = async (device: Device) => {
-    setStatus(`Connecting to ${device.localName}...`);
+  const handleJoin = async (device: Peripheral) => {
+    setStatus(`Connecting to ${device.name}...`);
     try {
-      const connected = await joinRoom(
+      const deviceId = await joinRoom(
         device,
         (message) => addMessage('Host', message),
         () => {
@@ -117,10 +123,10 @@ export default function Index() {
           Alert.alert('Disconnected', 'Lost connection to the host.');
         },
       );
-      setConnectedDevice(connected);
+      setConnectedDevice(deviceId);
       setMode('connected');
-      setStatus(`Connected to ${device.localName} ✓`);
-      addMessage('System', `Connected to ${device.localName} ✓`);
+      setStatus(`Connected to ${device.name} ✓`);
+      addMessage('System', `Connected to ${device.name} ✓`);
     } catch (e) {
       setStatus('Connection failed — try again');
       Alert.alert('Failed', 'Could not connect. Make sure the other phone is hosting.');
@@ -163,7 +169,12 @@ export default function Index() {
         <View style={styles.headerLeft}>
           <View style={[
             styles.dot,
-            { backgroundColor: mode === 'idle' ? '#666' : mode === 'scanning' ? '#f0c040' : '#2ecc71' }
+            {
+              backgroundColor:
+                mode === 'idle' ? '#666' :
+                mode === 'scanning' ? '#f0c040' :
+                '#2ecc71'
+            }
           ]} />
           <Text style={styles.status}>{status}</Text>
         </View>
@@ -210,7 +221,7 @@ export default function Index() {
                 >
                   <View>
                     <Text style={styles.roomName}>
-                      {item.localName ?? 'GamesNight Room'}
+                      {item.name ?? 'GamesNight Room'}
                     </Text>
                     <Text style={styles.roomId}>{item.id.slice(0, 20)}...</Text>
                   </View>
